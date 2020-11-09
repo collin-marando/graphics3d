@@ -12,6 +12,13 @@ let camera = {
 const WIDTH = 700;
 const HEIGHT = 500;
 
+const fov = 90;
+const zNear = 0.1;
+const zFar = 1000;
+
+const ROT_RATE = 0.0001;
+let rotation = 0;
+
 function setup() {
     let canvas = createCanvas(WIDTH, HEIGHT);
     canvas.parent("canvas");
@@ -25,11 +32,16 @@ function draw() {
             face = face.map(i => {
                 let p = [...vertices[i]];
 
-                // Move into view
-                p[2] += 3;
+                // Create transformation matrix
+                rotation += ROT_RATE;
+                const R = matrixMultiply(xRotMatrix(rotation), zRotMatrix(rotation));
+                const T = matrixMultiply(transMatrix(0, 0, 3), R);
+                const P = matrixMultiply(projMatrix(), T);
 
                 // Project to 2D
-                p = vTransform(p, projMatrix);
+                p = vHom(p);
+                p = vTransform(p, P);
+                p = vCart(p);
 
                 // Scale to screen
                 p[0] = (p[0] + 1) / 2 * WIDTH;
@@ -41,27 +53,14 @@ function draw() {
     }
 }
 
-//-------------------PROJECTION-------------------
-
-const fov = 90;
-const zNear = 0.1;
-const zFar = 1000;
-
-const aspect = HEIGHT / WIDTH;
-const fovRad = 1 / Math.tan(fov / 2 * Math.PI / 180);
-const farRatio = zFar / (zFar - zNear);
-
-const projMatrix = [
-    [fovRad * aspect, 0, 0, 0],
-    [0, fovRad, 0, 0],
-    [0, 0, farRatio, -farRatio * zNear],
-    [0, 0, 1, 0]
-];
-
 //---------------------VECTORS--------------------
 
-function vec(x, y, z) {
-    return { x: x, y: y, z: z };
+function vHom(v) {
+    return [...v, 1];
+}
+
+function vCart(v) {
+    return v[3] === 0 ? v.slice(0, 3) : v.slice(0, 3).map(a => a / v[3]);
 }
 
 function vAdd(u, v) {
@@ -89,33 +88,86 @@ function vNormalize(v) {
 }
 
 function vTransform(v, M) {
-    let temp = M.map(r => vDotProduct(v, r) + r[3]);
-    const w = temp[3];
-    return w === 0 ? temp.slice(0, 3) : temp.slice(0, 3).map(a => a / w);
+    return M.map(r => vDotProduct(v, r));
 }
 
-function vRotX(v, a) {
-    return vTransform(v, [
-        [1, 0, 0],
-        [0, Math.cos(a), -Math.sin(a)],
-        [0, Math.sin(a), Math.cos(a)]
-    ]);
+//--------------------MATRICES----------------------
+
+const aspect = HEIGHT / WIDTH;
+const fovRad = 1 / Math.tan(fov / 2 * Math.PI / 180);
+const farRatio = zFar / (zFar - zNear);
+
+function emptyMatrix() {
+    return Array(4).fill().map(() => Array(4).fill(0));
 }
 
-function vRotY(v, a) {
-    return vTransform(v, [
-        [Math.cos(a), 0, Math.sin(a)],
-        [0, 0, 0],
-        [-Math.sin(a), 0, Math.cos(a)]
-    ]);
+function identityMatrix() {
+    const M = emptyMatrix();
+    M[0][0] = 1;
+    M[1][1] = 1;
+    M[2][2] = 1;
+    M[3][3] = 1;
+    return M;
 }
 
-function vRotZ(v, a) {
-    return vTransform(v, [
-        [Math.cos(a), -Math.sin(a), 0],
-        [Math.sin(a), Math.cos(a), 0],
-        [0, 0, 1]
-    ]);
+function projMatrix() {
+    const M = emptyMatrix();
+    M[0][0] = fovRad * aspect;
+    M[1][1] = fovRad;
+    M[2][2] = farRatio;
+    M[2][3] = -farRatio * zNear;
+    M[3][2] = 1;
+    return M;
+}
+
+function transMatrix(x, y, z) {
+    const M = identityMatrix();
+    M[0][3] = x;
+    M[1][3] = y;
+    M[2][3] = z;
+    return M;
+}
+
+function xRotMatrix(a) {
+    const M = identityMatrix();
+    M[1][1] = Math.cos(a);
+    M[1][2] = -Math.sin(a);
+    M[2][1] = Math.sin(a);
+    M[2][2] = Math.cos(a);
+    return M;
+}
+
+function yRotMatrix(a) {
+    const M = identityMatrix();
+    M[0][0] = Math.cos(a);
+    M[0][2] = Math.sin(a);
+    M[2][0] = -Math.sin(a);
+    M[2][2] = Math.cos(a);
+    return M;
+}
+
+function zRotMatrix(a) {
+    const M = identityMatrix();
+    M[0][0] = Math.cos(a);
+    M[0][1] = -Math.sin(a);
+    M[1][0] = Math.sin(a);
+    M[1][1] = Math.cos(a);
+    return M;
+}
+
+function transpose(M) {
+    let N = emptyMatrix();
+    for (i = 0; i < 4; i++) {
+        for (j = 0; j < 4; j++) {
+            N[i][j] = M[j][i];
+        }
+    }
+    return N;
+}
+
+function matrixMultiply(M, N) {
+    const NT = transpose(N);
+    return M.map(r => NT.map(c => vDotProduct(r, c)));
 }
 
 //--------------------KEY INPUT---------------------
@@ -153,14 +205,6 @@ function keyReleased() {
     } else if (keyCode === RIGHT_ARROW || key === "d") {
         heldKey.x = keyIsDown(LEFT_ARROW) || keyIsDown(97) ? "left" : "none";
     }
-}
-
-
-
-//--------------------MOUSE INPUT---------------------
-
-function mouseClicked() {
-
 }
 
 //--------------------FILE PARSING---------------------
