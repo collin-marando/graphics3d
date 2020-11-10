@@ -4,7 +4,6 @@ let vertices = [];
 let faces = [];
 
 let camera = {
-    up: [0, 1, 0],
     forward: [0, 0, 1],
     pos: [0, 0, 0],
 }
@@ -15,6 +14,8 @@ const HEIGHT = 500;
 const fov = 90;
 const zNear = 0.1;
 const zFar = 1000;
+
+const MOVE_SPEED = 0.03;
 
 const ROT_RATE = 0.0001;
 let rotation = 0;
@@ -28,9 +29,9 @@ function setup() {
 function draw() {
     if (!pause) {
         background(172, 182, 189);
-        faces.forEach((face, index) => {
+        faces.forEach(face => {
 
-            // TODO: TEMP Move the model into view in the world
+            // TODO: TEMP Move the model into view and give 'er a spin
             face = face.map(i => {
                 let p = [...vertices[i]];
 
@@ -44,18 +45,18 @@ function draw() {
 
             // Skip rendering away-facing triangles
             const normal = getNormal(face);
-            const toCam = vSub(camera.pos, face[0]);
-            if (vDotProduct(toCam, normal) < 0) {
+            if (vDotProduct(normal, vSub(camera.pos, face[0])) < 0) {
                 return;
             }
 
             // Calculate shading relative to camera
-            fill((90 - vAngle(normal, vScale(camera.forward, -1))) / 90 * 255);
+            let percentage = 1 - vAngle(normal, vScale(camera.forward, -1)) * 2 / Math.PI;
+            fill(percentage * 160 + 50);
 
             face = face.map(p => {
-                // Project to 2d
-                const P = projMatrix();
-                p = vTransform(p, projMatrix());
+                // World space -> Camera space -> Projection space
+                const P = matrixMultiply(projMatrix(), lookAtMatrix());
+                p = vTransform(p, P);
 
                 // Scale to screen
                 p[0] = (p[0] + 1) / 2 * WIDTH;
@@ -66,6 +67,7 @@ function draw() {
             triangle(face[0][0], face[0][1], face[1][0], face[1][1], face[2][0], face[2][1]);
         });
 
+        actOnHeldKeys();
     }
 }
 
@@ -109,6 +111,15 @@ function vDotProduct(u, v) {
     return u.reduce((acc, _, i) => acc + u[i] * v[i], 0);
 }
 
+function vCrossProduct(u, v) {
+    const n = v.length;
+    w = [];
+    for (i = 0; i < n; i++) {
+        w.push(u[(i + 1) % n] * v[(i + 2) % n] - u[(i + 2) % n] * v[(i + 1) % n])
+    }
+    return w;
+}
+
 function vMagnitude(v) {
     return Math.sqrt(v.reduce((acc, a) => acc + a * a, 0));
 }
@@ -118,7 +129,7 @@ function vNormalize(v) {
 }
 
 function vAngle(u, v) {
-    return Math.acos(vDotProduct(u, v) / vMagnitude(u) / vMagnitude(v)) / Math.PI * 180;
+    return Math.acos(vDotProduct(vNormalize(u), vNormalize(v)));
 }
 
 function vTransform(v, M) {
@@ -189,6 +200,14 @@ function zRotMatrix(a) {
     return M;
 }
 
+function lookAtMatrix() {
+    let a = vAngle([0, 0, 1], camera.forward);
+    if (vDotProduct([0, 0, 1], vCrossProduct([0, 1, 0], camera.forward)) > 0) {
+        a = -a;
+    }
+    return matrixMultiply(yRotMatrix(-a), transMatrix(...vScale(camera.pos, -1)))
+}
+
 function transpose(M) {
     let N = emptyMatrix();
     for (i = 0; i < 4; i++) {
@@ -208,19 +227,29 @@ function matrixMultiply(M, N) {
 
 let heldKey = { x: "none", y: "none" };
 
+function actOnHeldKeys() {
+    if (heldKey.y === "up") {
+        camera.pos = vAdd(camera.pos, vScale(camera.forward, MOVE_SPEED))
+    } else if (heldKey.y === "down") {
+        camera.pos = vAdd(camera.pos, vScale(camera.forward, -MOVE_SPEED))
+    }
+
+    if (heldKey.x === "left") {
+        camera.forward = vTransform(camera.forward, yRotMatrix(-MOVE_SPEED))
+    } else if (heldKey.x === "right") {
+        camera.forward = vTransform(camera.forward, yRotMatrix(MOVE_SPEED))
+    }
+}
+
 function keyPressed() {
     if (keyCode === UP_ARROW || key === "w") {
         heldKey.y = "up";
-        camera.pos = vAdd(camera.pos, camera.forward)
     } else if (keyCode === DOWN_ARROW || key === "s") {
         heldKey.y = "down";
-        camera.pos = vSub(camera.pos, camera.forward)
     } else if (keyCode === LEFT_ARROW || key === "a") {
         heldKey.x = "left";
-        //moveLeft();
     } else if (keyCode === RIGHT_ARROW || key === "d") {
         heldKey.x = "right";
-        //moveRight();
     } else if (key === 'p') {
         pause = !pause;
     }
