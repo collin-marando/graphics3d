@@ -1,34 +1,55 @@
 let pause = false; //for halting printouts
 
+let mode = 0;
+const modes = [
+    "Projection",
+    "Transformations",
+    "Culling",
+    "Shading",
+    "Camera",
+]
+
+const WIDTH = 700;
+const HEIGHT = 500;
+
+const modeDisplay = document.getElementById("modeDisplay");
+const modeList = document.getElementById("modeList");
+
+// Geometry buffers
 let vertices = [];
 let faces = [];
 
+// Camera and clipping fields
+const FOV = 90;
+const Z_NEAR = 0.1;
+const Z_FAR = 1000;
+const MOVE_SPEED = 0.03;
 let camera = {
     forward: [0, 0, 1],
     pos: [0, 0, 0],
 }
 
-const WIDTH = 700;
-const HEIGHT = 500;
-
-const fov = 90;
-const zNear = 0.1;
-const zFar = 1000;
-
-const MOVE_SPEED = 0.03;
-
+// TODO: TEMP fer spinnin'
 const ROT_RATE = 0.0001;
 let rotation = 0;
 
 function setup() {
     let canvas = createCanvas(WIDTH, HEIGHT);
     canvas.parent("canvas");
-    noStroke();
+
+    modes.forEach(mode => {
+        var li = document.createElement("li");
+        li.textContent = mode;
+        modeList.appendChild(li);
+    });
 }
 
 function draw() {
     if (!pause) {
         background(172, 182, 189);
+
+        checkMode("Shading") ? noStroke() : stroke(0);
+
         faces.forEach(face => {
 
             // TODO: TEMP Move the model into view and give 'er a spin
@@ -36,22 +57,29 @@ function draw() {
                 let p = [...vertices[i]];
 
                 // Create transformation matrix
+                if (!checkMode("Transformations")) {
+                    return vTransform(p, transMatrix(0, 0, 3));
+                }
+
                 rotation += ROT_RATE;
                 const R = matrixMultiply(xRotMatrix(rotation), zRotMatrix(rotation));
                 const T = matrixMultiply(transMatrix(0, 0, 3), R);
-
                 return vTransform(p, T);
             });
 
             // Skip rendering away-facing triangles
             const normal = getNormal(face);
-            if (vDotProduct(normal, vSub(camera.pos, face[0])) < 0) {
+            if (vDotProduct(normal, vSub(camera.pos, face[0])) < 0 && checkMode("Culling")) {
                 return;
             }
 
             // Calculate shading relative to camera
-            let percentage = 1 - vAngle(normal, vScale(camera.forward, -1)) * 2 / Math.PI;
-            fill(percentage * 160 + 50);
+            if (checkMode("Shading")) {
+                let percentage = 1 - vAngle(normal, vScale(camera.forward, -1)) * 2 / Math.PI;
+                fill(percentage * 160 + 50);
+            } else {
+                noFill();
+            }
 
             face = face.map(p => {
                 // World space -> Camera space -> Projection space
@@ -71,29 +99,19 @@ function draw() {
     }
 }
 
+function checkMode(reqMode) {
+    return modes.indexOf(reqMode) <= mode;
+}
+
 //----------------------FACES---------------------
 
 function getNormal(f) {
-    let u = [];
-    let v = [];
-    for (i = 0; i < 3; i++) {
-        u[i] = f[1][i] - f[0][i];
-        v[i] = f[2][i] - f[0][i];
-    }
-
-    let cross = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-    return vNormalize(cross);
+    let u = vSub(f[1], f[0]);
+    let v = vSub(f[2], f[0]);
+    return vNormalize(vCrossProduct(u, v));
 }
 
 //---------------------VECTORS--------------------
-
-function vHom(v) {
-    return [...v, 1];
-}
-
-function vCart(v) {
-    return v[3] === 0 ? v.slice(0, 3) : v.slice(0, 3).map(a => a / v[3]);
-}
 
 function vAdd(u, v) {
     return u.map((_, i) => u[i] + v[i]);
@@ -132,6 +150,14 @@ function vAngle(u, v) {
     return Math.acos(vDotProduct(vNormalize(u), vNormalize(v)));
 }
 
+function vHom(v) {
+    return [...v, 1];
+}
+
+function vCart(v) {
+    return v[3] === 0 ? v.slice(0, 3) : v.slice(0, 3).map(a => a / v[3]);
+}
+
 function vTransform(v, M) {
     return vCart(M.map(r => vDotProduct(vHom(v), r)));
 }
@@ -139,8 +165,8 @@ function vTransform(v, M) {
 //--------------------MATRICES----------------------
 
 const aspect = HEIGHT / WIDTH;
-const fovRad = 1 / Math.tan(fov / 2 * Math.PI / 180);
-const farRatio = zFar / (zFar - zNear);
+const fovRad = 1 / Math.tan(FOV / 2 * Math.PI / 180);
+const farRatio = Z_FAR / (Z_FAR - Z_NEAR);
 
 function emptyMatrix() {
     return Array(4).fill().map(() => Array(4).fill(0));
@@ -160,7 +186,7 @@ function projMatrix() {
     M[0][0] = fovRad * aspect;
     M[1][1] = fovRad;
     M[2][2] = farRatio;
-    M[2][3] = -farRatio * zNear;
+    M[2][3] = -farRatio * Z_NEAR;
     M[3][2] = 1;
     return M;
 }
@@ -252,6 +278,12 @@ function keyPressed() {
         heldKey.x = "right";
     } else if (key === 'p') {
         pause = !pause;
+    } else if (/^[0-9]$/i.test(key)) {
+        const num = parseInt(key) - 1;
+        if (num < modes.length && num >= 0) {
+            mode = num;
+            modeDisplay.textContent = modes[mode];
+        }
     }
 }
 
