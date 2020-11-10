@@ -22,13 +22,15 @@ let rotation = 0;
 function setup() {
     let canvas = createCanvas(WIDTH, HEIGHT);
     canvas.parent("canvas");
+    noStroke();
 }
 
 function draw() {
     if (!pause) {
-        background(155);
-        noFill();
+        background(172, 182, 189);
         faces.forEach((face, index) => {
+
+            // TODO: TEMP Move the model into view in the world
             face = face.map(i => {
                 let p = [...vertices[i]];
 
@@ -36,21 +38,49 @@ function draw() {
                 rotation += ROT_RATE;
                 const R = matrixMultiply(xRotMatrix(rotation), zRotMatrix(rotation));
                 const T = matrixMultiply(transMatrix(0, 0, 3), R);
-                const P = matrixMultiply(projMatrix(), T);
 
-                // Project to 2D
-                p = vHom(p);
-                p = vTransform(p, P);
-                p = vCart(p);
+                return vTransform(p, T);
+            });
+
+            // Skip rendering away-facing triangles
+            const normal = getNormal(face);
+            const toCam = vSub(camera.pos, face[0]);
+            if (vDotProduct(toCam, normal) < 0) {
+                return;
+            }
+
+            // Calculate shading relative to camera
+            fill((90 - vAngle(normal, vScale(camera.forward, -1))) / 90 * 255);
+
+            face = face.map(p => {
+                // Project to 2d
+                const P = projMatrix();
+                p = vTransform(p, projMatrix());
 
                 // Scale to screen
                 p[0] = (p[0] + 1) / 2 * WIDTH;
                 p[1] = (p[1] + 1) / 2 * HEIGHT;
                 return p;
             });
+
             triangle(face[0][0], face[0][1], face[1][0], face[1][1], face[2][0], face[2][1]);
         });
+
     }
+}
+
+//----------------------FACES---------------------
+
+function getNormal(f) {
+    let u = [];
+    let v = [];
+    for (i = 0; i < 3; i++) {
+        u[i] = f[1][i] - f[0][i];
+        v[i] = f[2][i] - f[0][i];
+    }
+
+    let cross = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    return vNormalize(cross);
 }
 
 //---------------------VECTORS--------------------
@@ -80,15 +110,19 @@ function vDotProduct(u, v) {
 }
 
 function vMagnitude(v) {
-    return Math.sqrt(v.reduce((acc, a) => acc + a * a), 0);
+    return Math.sqrt(v.reduce((acc, a) => acc + a * a, 0));
 }
 
 function vNormalize(v) {
     return vScale(v, 1 / vMagnitude(v))
 }
 
+function vAngle(u, v) {
+    return Math.acos(vDotProduct(u, v) / vMagnitude(u) / vMagnitude(v)) / Math.PI * 180;
+}
+
 function vTransform(v, M) {
-    return M.map(r => vDotProduct(v, r));
+    return vCart(M.map(r => vDotProduct(vHom(v), r)));
 }
 
 //--------------------MATRICES----------------------
@@ -210,6 +244,9 @@ function keyReleased() {
 //--------------------FILE PARSING---------------------
 
 function parseObj(result) {
+    vertices = [];
+    faces = [];
+
     let lines = result.split('\n');
 
     lines.forEach(line => {
