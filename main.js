@@ -25,6 +25,7 @@ const Z_NEAR = 0.1;
 const Z_FAR = 1000;
 const MOVE_SPEED = 0.03;
 let camera = {
+    up: [0, 1, 0],
     forward: [0, 0, 1],
     pos: [0, 0, 0],
 }
@@ -43,6 +44,8 @@ function setup() {
         modeList.appendChild(li);
     });
 }
+
+// TODO: Check that the forward vector is always normalized
 
 function draw() {
     if (!pause) {
@@ -251,7 +254,7 @@ function matrixMultiply(M, N) {
 
 //--------------------KEY INPUT---------------------
 
-let heldKey = { x: "none", y: "none" };
+let heldKey = { x: "none", y: "none", r: "none" };
 
 function actOnHeldKeys() {
     if (heldKey.y === "up") {
@@ -261,8 +264,14 @@ function actOnHeldKeys() {
     }
 
     if (heldKey.x === "left") {
-        camera.forward = vTransform(camera.forward, yRotMatrix(-MOVE_SPEED))
+        camera.pos = vAdd(camera.pos, vScale(vCrossProduct(camera.up, camera.forward), -MOVE_SPEED))
     } else if (heldKey.x === "right") {
+        camera.pos = vAdd(camera.pos, vScale(vCrossProduct(camera.up, camera.forward), MOVE_SPEED))
+    }
+
+    if (heldKey.r === "left") {
+        camera.forward = vTransform(camera.forward, yRotMatrix(-MOVE_SPEED))
+    } else if (heldKey.r === "right") {
         camera.forward = vTransform(camera.forward, yRotMatrix(MOVE_SPEED))
     }
 }
@@ -276,6 +285,10 @@ function keyPressed() {
         heldKey.x = "left";
     } else if (keyCode === RIGHT_ARROW || key === "d") {
         heldKey.x = "right";
+    } else if (key === "q") {
+        heldKey.r = "left";
+    } else if (key === "e") {
+        heldKey.r = "right";
     } else if (key === 'p') {
         pause = !pause;
     } else if (/^[0-9]$/i.test(key)) {
@@ -299,6 +312,11 @@ function keyReleased() {
 
     } else if (keyCode === RIGHT_ARROW || key === "d") {
         heldKey.x = keyIsDown(LEFT_ARROW) || keyIsDown(97) ? "left" : "none";
+    } else if (key === "q") {
+        heldKey.r = keyIsDown("e".charCodeAt(0)) ? "right" : "none";
+
+    } else if (key === "e") {
+        heldKey.r = keyIsDown("q".charCodeAt(0)) ? "left" : "none";
     }
 }
 
