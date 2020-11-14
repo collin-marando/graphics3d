@@ -7,6 +7,7 @@ const modes = [
     "Culling",
     "Shading",
     "Camera",
+    "Clipping",
 ]
 
 const WIDTH = 700;
@@ -14,6 +15,8 @@ const HEIGHT = 500;
 
 const modeDisplay = document.getElementById("modeDisplay");
 const modeList = document.getElementById("modeList");
+
+let worldToScreenMatrix;
 
 // Geometry buffers
 let vertices = [];
@@ -30,7 +33,13 @@ let camera = {
     pos: [0, 0, 0],
 }
 
-// TODO: TEMP fer spinnin'
+// NOTE: TEMP Clipping plane for clipping stage
+var clippingPlane = {
+    n: [1, 0, 0],
+    p: [0, 0, 0],
+}
+
+// NOTE: TEMP fer spinnin'
 const ROT_RATE = 0.0001;
 let rotation = 0;
 
@@ -45,26 +54,24 @@ function setup() {
     });
 }
 
-// TODO: Check that the forward vector is always normalized
-
 function draw() {
     if (!pause) {
         background(172, 182, 189);
 
-        checkMode("Shading") ? noStroke() : stroke(0);
+        // Calculate (World space -> Camera space -> Screen space) Matrix
+        worldToScreenMatrix = matrixMultiply(projMatrix(), lookAtMatrix());
 
         faces.forEach(face => {
 
-            // TODO: TEMP Move the model into view and give 'er a spin
+            // NOTE: TEMP Move the model into view and give 'er a spin
             face = face.map(i => {
                 let p = [...vertices[i]];
 
                 // Create transformation matrix
-                if (!checkMode("Transformations")) {
-                    return vTransform(p, transMatrix(0, 0, 3));
+                if (checkMode("Transformations")) {
+                    rotation += ROT_RATE;
                 }
 
-                rotation += ROT_RATE;
                 const R = matrixMultiply(xRotMatrix(rotation), zRotMatrix(rotation));
                 const T = matrixMultiply(transMatrix(0, 0, 3), R);
                 return vTransform(p, T);
@@ -76,26 +83,29 @@ function draw() {
                 return;
             }
 
-            // Calculate shading relative to camera
+            // Calculate face shading relative to camera
             if (checkMode("Shading")) {
+                noStroke();
                 let percentage = 1 - vAngle(normal, vScale(camera.forward, -1)) * 2 / Math.PI;
                 fill(percentage * 160 + 50);
             } else {
+                stroke(0);
+                strokeWeight(1);
                 noFill();
             }
 
-            face = face.map(p => {
-                // World space -> Camera space -> Projection space
-                const P = matrixMultiply(projMatrix(), lookAtMatrix());
-                p = vTransform(p, P);
+            if (checkMode("Clipping")) {
+                face = clipAgainstPlane(clippingPlane, face);
+            }
 
-                // Scale to screen
-                p[0] = (p[0] + 1) / 2 * WIDTH;
-                p[1] = (p[1] + 1) / 2 * HEIGHT;
-                return p;
-            });
+            face = worldToScreen(face);
 
-            triangle(face[0][0], face[0][1], face[1][0], face[1][1], face[2][0], face[2][1]);
+            i = 0;
+            while (i + 2 < face.length) {
+                triangle(...face[0], ...face[i + 1], ...face[i + 2]);
+                i++;
+            }
+
         });
 
         actOnHeldKeys();
@@ -106,12 +116,59 @@ function checkMode(reqMode) {
     return modes.indexOf(reqMode) <= mode;
 }
 
-//----------------------FACES---------------------
+
+
+function worldToScreen(points) {
+    return points.map(p => {
+        p = vTransform(p, worldToScreenMatrix).slice(0, 2);
+
+        // Scale to screen
+        p[0] = (p[0] + 1) / 2 * WIDTH;
+        p[1] = (p[1] + 1) / 2 * HEIGHT;
+
+        return p;
+    });
+}
+
+//------------------FACES & PLANES----------------
 
 function getNormal(f) {
     let u = vSub(f[1], f[0]);
     let v = vSub(f[2], f[0]);
     return vNormalize(vCrossProduct(u, v));
+}
+
+function pointRelPlane(plane, p) {
+    return vDotProduct(plane.n, p) - vDotProduct(plane.n, plane.p);
+}
+
+function lineIntersectPlane(plane, p, dir) {
+    let dot = vDotProduct(plane.n, dir);
+    if (dot === 0) return false;
+
+    let t = vDotProduct(plane.n, vSub(plane.p, p)) / dot;
+    return vAdd(p, vScale(dir, t));
+}
+
+function clipAgainstPlane(plane, f) {
+    let points = [];
+
+    for (i = 0; i < f.length; i++) {
+        let pCurr = f[i];
+        let pPrev = f[(i - 1 + f.length) % f.length]
+
+        let intersection = lineIntersectPlane(plane, pCurr, vSub(pPrev, pCurr))
+
+        if (pointRelPlane(plane, pCurr) > 0) {
+            if (pointRelPlane(plane, pPrev) <= 0)
+                points.push(intersection);
+            points.push(pCurr);
+        } else if (pointRelPlane(plane, pPrev) > 0) {
+            points.push(intersection);
+        }
+    }
+
+    return points;
 }
 
 //---------------------VECTORS--------------------
@@ -184,16 +241,6 @@ function identityMatrix() {
     return M;
 }
 
-function projMatrix() {
-    const M = emptyMatrix();
-    M[0][0] = fovRad * aspect;
-    M[1][1] = fovRad;
-    M[2][2] = farRatio;
-    M[2][3] = -farRatio * Z_NEAR;
-    M[3][2] = 1;
-    return M;
-}
-
 function transMatrix(x, y, z) {
     const M = identityMatrix();
     M[0][3] = x;
@@ -226,6 +273,16 @@ function zRotMatrix(a) {
     M[0][1] = -Math.sin(a);
     M[1][0] = Math.sin(a);
     M[1][1] = Math.cos(a);
+    return M;
+}
+
+function projMatrix() {
+    const M = emptyMatrix();
+    M[0][0] = fovRad * aspect;
+    M[1][1] = fovRad;
+    M[2][2] = farRatio;
+    M[2][3] = -farRatio * Z_NEAR;
+    M[3][2] = 1;
     return M;
 }
 
@@ -270,9 +327,9 @@ function actOnHeldKeys() {
     }
 
     if (heldKey.r === "left") {
-        camera.forward = vTransform(camera.forward, yRotMatrix(-MOVE_SPEED))
+        camera.forward = vNormalize(vTransform(camera.forward, yRotMatrix(-MOVE_SPEED)))
     } else if (heldKey.r === "right") {
-        camera.forward = vTransform(camera.forward, yRotMatrix(MOVE_SPEED))
+        camera.forward = vNormalize(vTransform(camera.forward, yRotMatrix(MOVE_SPEED)))
     }
 }
 
@@ -289,14 +346,20 @@ function keyPressed() {
         heldKey.r = "left";
     } else if (key === "e") {
         heldKey.r = "right";
-    } else if (key === 'p') {
-        pause = !pause;
     } else if (/^[0-9]$/i.test(key)) {
         const num = parseInt(key) - 1;
         if (num < modes.length && num >= 0) {
             mode = num;
             modeDisplay.textContent = modes[mode];
         }
+    } else if (key === 'r') {
+        camera = {
+            up: [0, 1, 0],
+            forward: [0, 0, 1],
+            pos: [0, 0, 0],
+        }
+    } else if (key === 'p') {
+        pause = !pause;
     }
 }
 
