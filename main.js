@@ -401,17 +401,17 @@ function keyPressed() {
 
 function keyReleased() {
     if (key === "w") {
-        heldKey.y = keyIsDown(115) ? "down" : "none";
+        heldKey.y = keyIsDown("S".charCodeAt(0)) ? "down" : "none";
     } else if (key === "s") {
-        heldKey.y = keyIsDown(119) ? "up" : "none";
+        heldKey.y = keyIsDown("W".charCodeAt(0)) ? "up" : "none";
     } else if (key === "a") {
-        heldKey.x = keyIsDown(100) ? "right" : "none";
+        heldKey.x = keyIsDown("D".charCodeAt(0)) ? "right" : "none";
     } else if (key === "d") {
-        heldKey.x = keyIsDown(97) ? "left" : "none";
+        heldKey.x = keyIsDown("A".charCodeAt(0)) ? "left" : "none";
     } else if (key === "q") {
-        heldKey.r = keyIsDown("e".charCodeAt(0)) ? "right" : "none";
+        heldKey.r = keyIsDown("E".charCodeAt(0)) ? "right" : "none";
     } else if (key === "e") {
-        heldKey.r = keyIsDown("q".charCodeAt(0)) ? "left" : "none";
+        heldKey.r = keyIsDown("Q".charCodeAt(0)) ? "left" : "none";
     }
 }
 
