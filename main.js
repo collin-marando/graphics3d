@@ -7,16 +7,16 @@ const modes = [
     "Culling",
     "Shading",
     "Camera",
-    "Clipping",
+    "Clipping: World",
+    "Clipping: Screen",
+    "End"
 ]
-
-const WIDTH = 700;
-const HEIGHT = 500;
 
 const modeDisplay = document.getElementById("modeDisplay");
 const modeList = document.getElementById("modeList");
 
-let worldToScreenMatrix;
+const WIDTH = 700;
+const HEIGHT = 500;
 
 // Geometry buffers
 let vertices = [];
@@ -33,10 +33,13 @@ let camera = {
     pos: [0, 0, 0],
 }
 
-// NOTE: TEMP Clipping plane for clipping stage
+// Tranformation Matrix (World space -> Camera space -> Screen space)
+let worldToScreenMatrix;
+
+// NOTE: TEMP Clipping plane for demonstrating clipping stage
 var clippingPlane = {
-    n: [1, 0, 0],
     p: [0, 0, 0],
+    n: [1, 0, 0],
 }
 
 // NOTE: TEMP fer spinnin'
@@ -49,8 +52,8 @@ function setup() {
 
     modes.forEach(mode => {
         var li = document.createElement("li");
-        li.textContent = mode;
-        modeList.appendChild(li);
+        //li.textContent = mode;
+        //modeList.appendChild(li);
     });
 }
 
@@ -83,6 +86,32 @@ function draw() {
                 return;
             }
 
+            if (checkMode("Clipping: World")) {
+                // Clip geometry by near and far view planes
+                const nearPoint = vAdd(camera.pos, vScale(camera.forward, Z_NEAR));
+                face = clipAgainstPlane({ n: camera.forward, p: nearPoint }, face);
+
+                const farPoint = vAdd(camera.pos, vScale(camera.forward, Z_FAR));
+                face = clipAgainstPlane({ n: vScale(camera.forward, -1), p: farPoint }, face);
+            }
+
+            // NOTE: TEMP for demonstrative purposes
+            if (modes[mode] === "Clipping: World") {
+                face = clipAgainstPlane(clippingPlane, face);
+            }
+
+            // Convert face data from world to screen coordinates
+            face = worldToScreen(face);
+
+            if (modes[mode] === "Clipping: Screen") {
+                face = clipAgainstBorders(WIDTH / 4, WIDTH * 3 / 4, HEIGHT / 4, HEIGHT * 3 / 4, face);
+                noFill();
+                stroke(0);
+                rect(WIDTH / 4, HEIGHT / 4, WIDTH / 2, HEIGHT / 2);
+            } else {
+                face = clipAgainstBorders(0, WIDTH, 0, HEIGHT, face);
+            }
+
             // Calculate face shading relative to camera
             if (checkMode("Shading")) {
                 noStroke();
@@ -93,12 +122,6 @@ function draw() {
                 strokeWeight(1);
                 noFill();
             }
-
-            if (checkMode("Clipping")) {
-                face = clipAgainstPlane(clippingPlane, face);
-            }
-
-            face = worldToScreen(face);
 
             i = 0;
             while (i + 2 < face.length) {
@@ -116,27 +139,22 @@ function checkMode(reqMode) {
     return modes.indexOf(reqMode) <= mode;
 }
 
-
+function updateMode(newMode) {
+    if (newMode >= 0 && newMode < modes.length) {
+        mode = newMode;
+        modeDisplay.textContent = modes[mode];
+    }
+}
 
 function worldToScreen(points) {
     return points.map(p => {
-        p = vTransform(p, worldToScreenMatrix).slice(0, 2);
-
-        // Scale to screen
-        p[0] = (p[0] + 1) / 2 * WIDTH;
-        p[1] = (p[1] + 1) / 2 * HEIGHT;
-
-        return p;
+        p = vTransform(p, worldToScreenMatrix);
+        return [(p[0] + 1) / 2 * WIDTH, (p[1] + 1) / 2 * HEIGHT];
     });
 }
 
-//------------------FACES & PLANES----------------
+//------------------CLIPPING----------------
 
-function getNormal(f) {
-    let u = vSub(f[1], f[0]);
-    let v = vSub(f[2], f[0]);
-    return vNormalize(vCrossProduct(u, v));
-}
 
 function pointRelPlane(plane, p) {
     return vDotProduct(plane.n, p) - vDotProduct(plane.n, plane.p);
@@ -169,6 +187,24 @@ function clipAgainstPlane(plane, f) {
     }
 
     return points;
+}
+
+function clipAgainstBorders(x1, x2, y1, y2, f) {
+
+    f = clipAgainstPlane({ p: [x1, 0], n: [1, 0] }, f);
+    f = clipAgainstPlane({ p: [x2, 0], n: [-1, 0] }, f);
+    f = clipAgainstPlane({ p: [0, y1], n: [0, 1] }, f);
+    f = clipAgainstPlane({ p: [0, y2], n: [0, -1] }, f);
+
+    return f;
+}
+
+//----------------------FACES---------------------
+
+function getNormal(f) {
+    let u = vSub(f[1], f[0]);
+    let v = vSub(f[2], f[0]);
+    return vNormalize(vCrossProduct(u, v));
 }
 
 //---------------------VECTORS--------------------
@@ -334,24 +370,24 @@ function actOnHeldKeys() {
 }
 
 function keyPressed() {
-    if (keyCode === UP_ARROW || key === "w") {
+    if (key === "w") {
         heldKey.y = "up";
-    } else if (keyCode === DOWN_ARROW || key === "s") {
+    } else if (key === "s") {
         heldKey.y = "down";
-    } else if (keyCode === LEFT_ARROW || key === "a") {
+    } else if (key === "a") {
         heldKey.x = "left";
-    } else if (keyCode === RIGHT_ARROW || key === "d") {
+    } else if (key === "d") {
         heldKey.x = "right";
     } else if (key === "q") {
         heldKey.r = "left";
     } else if (key === "e") {
         heldKey.r = "right";
+    } else if (keyCode === LEFT_ARROW) {
+        updateMode(mode - 1);
+    } else if (keyCode === RIGHT_ARROW) {
+        updateMode(mode + 1);
     } else if (/^[0-9]$/i.test(key)) {
-        const num = parseInt(key) - 1;
-        if (num < modes.length && num >= 0) {
-            mode = num;
-            modeDisplay.textContent = modes[mode];
-        }
+        updateMode(parseInt(key) - 1);
     } else if (key === 'r') {
         camera = {
             up: [0, 1, 0],
@@ -364,20 +400,16 @@ function keyPressed() {
 }
 
 function keyReleased() {
-    if (keyCode === UP_ARROW || key === "w") {
-        heldKey.y = keyIsDown(DOWN_ARROW) || keyIsDown(115) ? "down" : "none";
-
-    } else if (keyCode === DOWN_ARROW || key === "s") {
-        heldKey.y = keyIsDown(UP_ARROW) || keyIsDown(119) ? "up" : "none";
-
-    } else if (keyCode === LEFT_ARROW || key === "a") {
-        heldKey.x = keyIsDown(RIGHT_ARROW) || keyIsDown(100) ? "right" : "none";
-
-    } else if (keyCode === RIGHT_ARROW || key === "d") {
-        heldKey.x = keyIsDown(LEFT_ARROW) || keyIsDown(97) ? "left" : "none";
+    if (key === "w") {
+        heldKey.y = keyIsDown(115) ? "down" : "none";
+    } else if (key === "s") {
+        heldKey.y = keyIsDown(119) ? "up" : "none";
+    } else if (key === "a") {
+        heldKey.x = keyIsDown(100) ? "right" : "none";
+    } else if (key === "d") {
+        heldKey.x = keyIsDown(97) ? "left" : "none";
     } else if (key === "q") {
         heldKey.r = keyIsDown("e".charCodeAt(0)) ? "right" : "none";
-
     } else if (key === "e") {
         heldKey.r = keyIsDown("q".charCodeAt(0)) ? "left" : "none";
     }
@@ -412,6 +444,7 @@ function readFile(input) {
 
     reader.onload = function() {
         parseObj(reader.result);
+        updateMode(mode);
     };
 
     reader.onerror = function() {
