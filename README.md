@@ -1,4 +1,4 @@
-# A Razertizer 3D engine, using the html5 canvas + p5
+# Rasertiser 3D engine, using the html5 canvas + p5
 
 ** under repair **
 
