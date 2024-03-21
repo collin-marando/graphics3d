@@ -1,4 +1,4 @@
-# Rasertiser 3D engine, using the html5 canvas + p5
+# Rastertiser 3D engine, using the html5 canvas + p5
 
 ** under repair **
 
